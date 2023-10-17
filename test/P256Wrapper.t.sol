@@ -3,7 +3,7 @@ pragma solidity 0.8.21;
 
 import "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {P256} from "../src/P256.sol";
+import {P256} from "../src/P256Wrapper.sol";
 import {HuffDeployer} from "lib/foundry-huff/src/HuffDeployer.sol";
 
 contract P256Test is Test {
@@ -11,7 +11,7 @@ contract P256Test is Test {
     P256 p256;
 
     function setUp() public {
-        p256 = new P256(HuffDeployer.deploy("P256Verifier/Verifier"));
+        p256 = new P256(HuffDeployer.deploy("P256HuffVerifier/Verifier"));
 
         pubKey = [
             0x65a2fa44daad46eab0278703edb6c4dcf5e30b8a9aec09fdc71a56f52aa392e4,

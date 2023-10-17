@@ -7,7 +7,7 @@ Secp256r1 (a.k.a p256) curve signature verifier rewritten and optimized in [Huff
 ### Benchmark
 
 - [Solidity p256 Verifier](https://github.com/daimo-eth/p256-verifier/blob/master/src/P256Verifier.sol): 330,000 gas
-- [Huff p256 Verifier](https://github.com/AmadiMichael/p256-verifier-huff/blob/master/src/P256Verifier/Verifier.huff): 240,000 gas
+- [Huff p256 Verifier](https://github.com/AmadiMichael/p256-verifier-huff/blob/master/src/P256HuffVerifier/Verifier.huff): 240,000 gas
 
 ### Further References
 
