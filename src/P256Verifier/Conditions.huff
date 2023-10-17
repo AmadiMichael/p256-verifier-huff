@@ -1,0 +1,143 @@
+
+
+///@dev returns 1 or 0 as true or false respectively based on if both x and y on the stack to it is 0
+#define macro IS_BOTH_0() = {
+    // input stack:                     [x, y]
+
+    iszero                                                                                      // [iszero(x), y]
+    swap1                                                                                       // [y, iszero(x)]
+    iszero                                                                                      // [iszero(y), iszero(x)]
+    and                                                                                         // [0/1]
+}
+
+
+
+///@dev returns 1 or 0 as true or false respectively based on if the public key points on the stack are valid points on the curve and if they are within the prime field
+#define macro IS_VALID_PUB_KEY_AND_SATISFIES_CURVE_EQN() = {
+    // input stack:                         [x, y]
+
+    // require x and y is less than p and are also not 0 else return false
+    
+
+    // if (x >= p) return false
+    [P]                                                                                         // [P, x, y]
+    dup1                                                                                        // [P, P, x, y]
+    dup3                                                                                        // [x, P, P, x, y]
+    lt                                                                                          // [lt(x, P), P, x, y]
+    iszero                                                                                      // [iszero(lt(x, P)), P, x, y]
+    return_false                                                                                // [return_false, iszero(lt(x, P)), P, x, y]
+    jumpi                                                                                       // [P, x, y]
+
+    // if (y >= p) return false
+    dup3                                                                                        // [y, P, x, y]
+    lt                                                                                          // [lt(y, P), x, y]
+    iszero                                                                                      // [iszero(lt(y, P)), x, y]
+    return_false                                                                                // [return_false, iszero(lt(x, P)), x, y]
+    jumpi                                                                                       // [x, y]
+
+    // if (x == 0 && y == 0) return false
+    dup2                                                                                        // [y, x, y]
+    dup2                                                                                        // [x, y, x, y]
+    iszero                                                                                      // [iszero(x), y, x, y]
+    swap1                                                                                       // [y, iszero(x), x, y]
+    iszero                                                                                      // [iszero(y), iszero(x), x, y]
+    and                                                                                         // [and(iszero(y), iszero(x)), x, y]
+    return_false                                                                                // [return_false, and(iszero(y), iszero(x)), x, y]
+    jumpi                                                                                       // [x, y]
+
+
+    CHECK_SATISFIES_CURVE_EQN()                                                                 // [0/1]
+    return_boolean                                                                              // [return_boolean, 0/1]
+    jump                                                                                        // [0/1]
+
+
+    return_false:                                                                               // [] can have 3 possible stack state here depending on where it jumped here from. does not matter as we return with 32 bytes 0f 0 here
+        0x00                                                                                    // [0x00]
+
+    return_boolean:                                                                             
+}
+
+
+///@dev asserting that plugging x and y into the equation below works
+/// y^2 = x^3 + ax + b
+#define macro CHECK_SATISFIES_CURVE_EQN() = {
+    // input stack:                         [y, x]
+
+    // get y^2
+    dup1                                                                                        // [y, y, x]
+    MULMOD_P()                                                                                  // [y^2, x]
+
+    
+    // get x^3
+    swap1                                                                                       // [x, y^2]
+    dup1                                                                                        // [x, x, y^2]
+    dup1                                                                                        // [x, x, x, y^2]
+    dup1                                                                                        // [x, x, x, x, y^2]
+    MULMOD_P()                                                                                  // [x^2, x, x, y^2]
+    MULMOD_P()                                                                                  // [x^3, x, y^2]
+
+
+    // get ax
+    swap1                                                                                       // [x, x^3, y^2]
+    [A]                                                                                         // [A, x, x^3, y^2]
+    MULMOD_P()                                                                                  // [Ax, x^3, y^2]
+
+
+    // get x^3 + ax
+    ADDMOD_P()                                                                                  // [(Ax + x^3), y^2]
+
+
+    // get all right hand side by adding b
+    [B]                                                                                         // [B, (Ax + x^3), y^2]
+
+    ADDMOD_P()                                                                                  // [(x^3 + ax + b), y^2]
+
+    eq                                                                                          // [(x^3 + ax + b == y^2)]
+}
+
+
+
+
+///@dev returns 1 or 0 as true or false values respectively based on if both r and s values are within the scalar field and are both not 0
+#define macro CHECK_R_AND_S_ARE_IN_SCALAR_FIELD() = {
+    // input stack:                         [r, s]
+
+    // if (r == 0) return false
+    dup1                                                                                        // [r, r, s]
+    iszero                                                                                      // [iszero(r), r, s]
+    return_false                                                                                // [return_false, iszero(r), r, s]
+    jumpi                                                                                       // [r, s]
+
+    // if (s == 0) return false
+    dup2                                                                                        // [s, r, s]
+    iszero                                                                                      // [iszero(s), r, s]
+    return_false                                                                                // [return_false, iszero(s), r, s]
+    jumpi                                                                                       // [r, s]
+    
+    // if (r >= n) return false
+    [N]                                                                                         // [N, r, s]
+    dup1                                                                                        // [N, N, r, s]
+    swap2                                                                                       // [r, N, N, s]
+    lt                                                                                          // [lt(r, N), N, s]
+    iszero                                                                                      // [iszero(lt(r, N)), N, s]
+    return_false                                                                                // [return_false, iszero(lt(r, N)), N, s]
+    jumpi                                                                                       // [N, s]
+
+    // if (s >= n) return false
+    swap1                                                                                       // [s, N]
+    lt                                                                                          // [lt(s, N)]
+    iszero                                                                                      // [iszero(lt(s, N))]
+    return_false                                                                                // [return_false, iszero(lt(s, N))]
+    jumpi                                                                                       // []
+
+    // if it gets here then all checks pass
+    0x01                                                                                        // [0x01]
+    return_boolean                                                                              // [return_boolean, 0x01]
+    jump                                                                                        // [0x01]
+
+
+    return_false:                                                                               // [] can have 3 possible stack state here depending on where it jumped here from. does not matter as we return with 32 bytes 0f 0 here
+        0x00
+    
+    return_boolean:
+}

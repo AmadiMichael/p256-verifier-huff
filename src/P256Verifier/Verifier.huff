@@ -1,0 +1,201 @@
+/// SPDX-License-Identifier: MIT
+/// @author Amadi Michael
+/// @title Huff p256 Verifier
+/// @notice This is a direct huff implementation of the DaimoEth Solidity p256 verifier here (https://github.com/daimo-eth/p256-verifier/blob/master/src/P256Verifier.sol)
+
+
+#include "./ECMath.huff"
+#include "./Conditions.huff"
+#include "./ModMath.huff"
+
+
+///@dev Parameters for the sec256r1 (P256) elliptic curve
+
+// Curve prime field modulus
+#define constant P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
+
+// Short weierstrass first coefficient, The assumption a == -3 (mod p) is used throughout the codebase
+#define constant A = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC
+
+// Short weierstrass second coefficient
+#define constant B = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B
+
+// Generator point affine coordinates
+#define constant GX = 0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296
+#define constant GY = 0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5
+
+// Curve order (number of points)
+#define constant N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+// -2 mod p constant, used to speed up inversion and doubling (avoid negation)
+#define constant MINUS_2_MOD_P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFD
+
+// -2 mod n constant, used to speed up inversion
+#define constant MINUS_2_MOD_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC63254F
+
+
+///@dev macro constants
+#define macro EC_ZZ_POINT_AT_INF() = {
+    0x00                                                                                        // [0x00]
+    0x00                                                                                        // [0x00, 0x00]
+    0x00                                                                                        // [0x00, 0x00, 0x00]
+    0x00                                                                                        // [0x00, 0x00, 0x00, 0x00]
+}
+
+#define macro EC_AFFINE_POINT_AT_INF() = {
+    0x00                                                                                        // [0x00]
+    0x00                                                                                        // [0x00, 0x00]
+}
+
+
+
+
+///@dev entry point
+#define macro MAIN() = {
+    /**
+     * Precompiles don't use a function signature. The first byte of callldata
+     * is the first byte of an input argument. In this case:
+     *
+     * input[  0: 32] = signed data hash
+     * input[ 32: 64] = signature r
+     * input[ 64: 96] = signature s
+     * input[ 96:128] = public key x
+     * input[128:160] = public key y
+     *
+     * result[ 0: 32] = 0x00..00 (invalid) or 0x00..01 (valid)
+     *
+     * For details, see https://eips.ethereum.org/EIPS/eip-7212
+     */
+    
+    
+    // return 0 if calldatasize != 160
+    0xa0                                                                                        // [160]
+    calldatasize                                                                                // [calldatasize, 160]
+    sub                                                                                         // [sub(calldatasize, 160)]
+    return_false_jumpdest                                                                       // [return_false_jumpdest, sub(calldatasize, 160)]
+    jumpi                                                                                       // []
+
+
+
+    ECDSA_VERIFY()                                                                              // [0 or 1]                                                    
+    RETURN_BOOLEAN()                                                                            
+
+
+
+    return_false_jumpdest:
+        0x00                                                                                    // [0x00]
+        RETURN_BOOLEAN()
+}
+
+
+
+///@dev only macro that returns to the caller, no revert or stop opcodes used
+#define macro RETURN_BOOLEAN() = {
+    // input stack:                         [return_boolean]
+
+    0x00                                                                                        // [0x00, return_boolean]
+    mstore                                                                                      // []
+
+    0x20                                                                                        // [0x20]
+    0x00                                                                                        // [0x00, 0x20]
+    return                                                                                      // Execution returns successfully
+}
+
+
+
+/**
+ * @dev
+ * sInv = s ^ -1
+ * u1 = G * (message_hash * sInv)
+ * u2 = PubKey * (r * sInv)
+ * u3 = u1 + u2
+ *
+ * return u3.x == r
+
+
+ * the optimization however introduces by Daimo was calculating the scalar multiplications and then using shamir's method to add the G and PubKey when certain bits are non-zero
+ */
+#define macro ECDSA_VERIFY() = {
+    // load parameters to the stack
+    LOAD_CALLDATA_PARAMS()                                                                      // [message_hash, r, s]
+
+
+    // Check r and s are within the scalar field
+    dup3                                                                                        // [s, message_hash, r, s]
+    dup3                                                                                        // [r, s, message_hash, r, s]
+    CHECK_R_AND_S_ARE_IN_SCALAR_FIELD()                                                         // [0/1, message_hash, r, s]
+    iszero                                                                                      // [iszero(0/1), message_hash, r, s]
+    return_false                                                                                // [return_false, iszero(0/1), message_hash, r, s]
+    jumpi                                                                                       // [message_hash, r, s]
+
+
+    // Check that public key x and y axis are both within the prime field and are not both 0 and also when plugged into the ecc eqn, it equates correctly.
+    0x00 mload                                                                                  // [x, message_hash, r, s]
+    0x20 mload                                                                                  // [y, x, message_hash, r, s]
+    IS_VALID_PUB_KEY_AND_SATISFIES_CURVE_EQN()                                                  // [0/1, message_hash, r, s]
+    iszero                                                                                      // [iszero(0/1), message_hash, r, s]
+    return_false                                                                                // [return_false, iszero(0/1), message_hash, r, s]
+    jumpi                                                                                       // [message_hash, r, s]
+
+
+
+    // get sInv
+    swap2                                                                                       // [s, r, message_hash]
+    N_MOD_INV()                                                                                 // [sInv, r, message_hash]
+
+
+
+    // get scalar_u i.e (message_hash * sInv)
+    dup1                                                                                        // [sInv, sInv, r, message_hash]
+    swap3                                                                                       // [message_hash, sInv, r, sInv]
+    MULMOD_N()                                                                                  // [scalar_u, r, sInv]
+
+    
+    // get scalar_V i.e (r * sInv)
+    swap2                                                                                       // [sInv, r, scalar_u]
+    MULMOD_N()                                                                                  // [scalar_v, scalar_u]
+
+
+
+    // call ecZZ_mulmuladd
+    [N]                                                                                         // [N, scalar_v, scalar_u]
+    swap2                                                                                       // [scalar_u, scalar_v, N]
+    EC_ZZ_MUL_MUL_ADD()                                                                         // [r_x, N]
+    mod                                                                                         // [r_x]
+
+
+
+    0x20                                                                                        // [0x20, r_x]
+    calldataload                                                                                // [r, r_x]
+    eq                                                                                          // [eq(r, r_x)]
+    return_boolean                                                                              // [return_boolean, eq(r, r_x)]
+    jump                                                                                        // [eq(r, r_x)]
+
+
+    return_false:
+        0x00
+
+    return_boolean:
+
+}
+
+///@dev load calldata to stack
+#define macro LOAD_CALLDATA_PARAMS() = {
+    // store public key points in memory
+    0x40
+    0x60
+    0x00
+    calldatacopy                                                                                // []
+    
+    // s
+    0x40
+    calldataload                                                                                // [s]
+
+    // r
+    0x20
+    calldataload                                                                                // [r, s]
+
+    // message hash
+    0x00
+    calldataload                                                                                // [message_hash, r, s]
+}

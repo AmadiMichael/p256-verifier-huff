@@ -1,0 +1,810 @@
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L125
+* @dev Computation of uG + vQ using Strauss-Shamir's trick, G basepoint, Q public key
+* returns tuple of (x coordinate of uG + vQ, boolean that is false if internal precompile staticcall fail)
+* Strauss-Shamir is described well in https://stackoverflow.com/a/50994362
+*/
+#define macro EC_ZZ_MUL_MUL_ADD() = {
+    // input stack:                     [scalar_u, scalar_v]
+
+    // if (scalar_u == 0 && scalar_v == 0) return 0
+    dup2                                                                                        // [scalar_v, scalar_u, scalar_v]
+    dup2                                                                                        // [scalar_u, scalar_v, scalar_u, scalar_v]
+    IS_BOTH_0()                                                                                 // [0/1, scalar_u, scalar_v]
+    return_zero                                                                                 // [return_false, 0/1, scalar_u, scalar_v]
+    jumpi                                                                                       // [scalar_u, scalar_v]
+
+
+    // add generator point with public key to get precomputed ec points to add when both scalar bits are 1 in strauss-shamirs method
+    0x20 mload                                                                                  // [QY, scalar_u, scalar_v]
+    0x00 mload                                                                                  // [QX, QY, scalar_u, scalar_v]
+    [GY]                                                                                        // [GY, QX, QY, scalar_u, scalar_v]
+    [GX]                                                                                        // [GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+    dup4                                                                                        // [QY, GX, GY, QX, QY, scalar_u, scalar_v]
+    dup4                                                                                        // [QX, QY, GX, GY, QX, QY, scalar_u, scalar_v]
+    dup4                                                                                        // [GY, QX, QY, GX, GY, QX, QY, scalar_u, scalar_v]
+    dup4                                                                                        // [GX, GY, QX, QY, GX, GY, QX, QY, scalar_u, scalar_v]
+    EC_AFF_ADD()                                                                                // [HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+    0xff                                                                                        // [index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+    0x00                                                                                        // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+
+
+    // Find the first bit index that's active in either scalar_u or scalar_v
+
+    // Start loop
+    first_bit_index_finder_loop_start:                                                          // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        // compute bitpair
+        pop                                                                                     // [index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup1                                                                                    // [index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup10                                                                                   // [scalar_v, index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup11                                                                                   // [scalar_u, scalar_v, index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        COMPUTE_BITPAIR()                                                                       // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // decrement index by 1
+        swap1                                                                                   // [index, bitpair, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        0x01                                                                                    // [0x01, index, bitpair, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        swap1                                                                                   // [index, 0x01, bitpair, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        sub                                                                                     // [index, bitpair, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        swap1                                                                                   // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // stop loop if bitpair != 0
+        dup1                                                                                    // [bitpair, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        continue_execution_1                                                                    // [continue_execution_1, bitpair, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // continue loop if 0 and above
+        0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff                      // [-1, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup3                                                                                    // [index, -1, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        sgt                                                                                     // [(index > -1), bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        first_bit_index_finder_loop_start                                                       // [first_bit_index_finder_loop_start, (index > -1), bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+
+    continue_execution_1:                                                                       // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        // assign values to X and Y based on if bitpair is 1, 2 or 3
+
+        // if bitpair == 1
+        dup1                                                                                    // [bitpair, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        0x01                                                                                    // [0x01, bitpair, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        eq                                                                                      // [(0x01 == bitpair), bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        bitpair_is_1                                                                            // [bitpair_is_1, (0x01 == bitpair), bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // if bitpair == 2
+        dup1                                                                                    // [bitpair, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        0x02                                                                                    // [0x02, bitpair, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        eq                                                                                      // [(0x02 == bitpair), bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        bitpair_is_2                                                                            // [bitpair_is_2, (0x02 == bitpair), bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // if bitpair == 3
+        // use HX and HY as X and Y respectively
+        dup4                                                                                    // [Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup4                                                                                    // [X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        continue_execution_2                                                                    // [continue_execution_2, X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jump                                                                                    // [X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+        bitpair_is_1:                                                                           // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            // use GX and GY as X and Y respectively
+            dup6                                                                                // [Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            dup6                                                                                // [X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            continue_execution_2                                                                // [continue_execution_2, X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            jump                                                                                // [X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        bitpair_is_2:                                                                           // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            // use QX and QY as X and Y respectively
+            dup8                                                                                // [Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            dup8                                                                                // [X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+
+    continue_execution_2:                                                                       // [X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        0x01                                                                                    // [zzz, X, Y, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        swap2                                                                                   // [Y, X, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        0x01                                                                                    // [zz, Y, X, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        swap2                                                                                   // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+    second_loop:                                                                                // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        // get new X, Y, zz, zzz
+        EC_ZZ_DOUBLE_ZZ()                                                                       // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        
+        // get bitpair
+        dup6                                                                                    // [index, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup15                                                                                   // [scalar_v, index, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup15                                                                                   // [scalar_u, scalar_v, index, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        COMPUTE_BITPAIR()                                                                       // [bitpair, X, Y, zz, zzz, old-bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        swap5                                                                                   // [old-bitpair, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        pop                                                                                     // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // decrement index by 1
+        0x01                                                                                    // [0x01, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup7                                                                                    // [index, 0x01, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        sub                                                                                     // [index, X, Y, zz, zzz, bitpair, old-index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        swap6                                                                                   // [old-index, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        pop                                                                                     // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // assign values to TX and TY based on the value of bitpair
+
+        // if bitpair == 0 skip to next iteration
+        dup5                                                                                    // [bitpair, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        iszero                                                                                  // [(bitpair == 0), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        check_iteration_condition                                                               // [check_iteration_condition, (bitpair == 0), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // if bitpair == 1 
+        dup5                                                                                    // [bitpair, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        0x01                                                                                    // [1, bitpair, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        eq                                                                                      // [(bitpair == 1), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        second_loop_bitpair_is_1                                                                // [second_loop_bitpair_is_1, (bitpair == 1), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // if bitpair == 2 
+        dup5                                                                                    // [bitpair, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        0x02                                                                                    // [2, bitpair, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        eq                                                                                      // [(bitpair == 2), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        second_loop_bitpair_is_2                                                                // [second_loop_bitpair_is_2, (bitpair == 2), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jumpi                                                                                   // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // otherwise 
+        // use HX and HY as TX and TY respectively
+        dup7                                                                                    // [TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup9                                                                                    // [TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        continue_second_loop_execution                                                          // [continue_second_loop_execution, TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jump                                                                                    // [TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+
+        second_loop_bitpair_is_1:                                                               // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            // use GX and GY a TX and TY
+            dup9                                                                                // [TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            dup11                                                                               // [TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            continue_second_loop_execution                                                      // [continue_second_loop_execution, TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            jump                                                                                // [TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        second_loop_bitpair_is_2:                                                               // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            // use QX and QY a TX and TY
+            dup11                                                                               // [TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            dup13                                                                               // [TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+
+
+        // get X, Y, zz and zzz
+        continue_second_loop_execution:                                                         // [TY, TX, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            swap3                                                                               // [Y, TX, X, TY, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            swap1                                                                               // [TX, Y, X, TY, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            swap2                                                                               // [X, Y, TX, TY, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            EC_ZZ_DADD_AFFINE()                                                                 // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        check_iteration_condition:
+            // continue loop if index is 0 and above
+            0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff                  // [-1, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            dup7                                                                                // [index, -1, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            sgt                                                                                 // [(index > -1), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            second_loop                                                                         // [second_loop, (index > -1), X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+            jumpi                                                                               // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+    
+    continue_execution_3:                                                                       // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        // get zzInv
+        dup3                                                                                    // [zz, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        P_MOD_INV()                                                                             // [zzInv, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+
+        // get final X
+        MULMOD_P()                                                                              // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        return_value                                                                            // [return_value, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        jump                                                                                    // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v] // we can revert with this stack state because the calling macro only uses the top of the stack
+
+        
+
+    return_zero:                                                                                // [scalar_u, scalar_v]
+        pop                                                                                     // [scalar_v]
+        pop                                                                                     // []
+        0x00                                                                                    // [0x00]
+
+    return_value:                                                                               // [X]
+}
+
+
+
+
+
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L193
+* @dev Compute the bits at `index` of u and v and return
+* them as 2 bit concatenation. The bit at index 0 is on
+* if the `index`th bit of scalar_u is on and the bit at
+* index 1 is on if the `index`th bit of scalar_v is on.
+* Examples:
+* - compute_bitpair(0, 1, 1) == 3
+* - compute_bitpair(0, 1, 0) == 1
+* - compute_bitpair(0, 0, 1) == 2
+*/
+#define macro COMPUTE_BITPAIR() = {
+    // input stack:                     [scalar_u, scalar_v, index]
+
+    dup3                                                                                        // [index, scalar_u, scalar_v, index]
+    shr                                                                                         // [(scalar_u >> index), scalar_v, index]
+    0x01                                                                                        // [0x01, (scalar_u >> index), scalar_v, index]
+    and                                                                                         // [(0x01 & (scalar_u >> index)), scalar_v, index]
+
+    swap2                                                                                       // [index, scalar_v, (0x01 & (scalar_u >> index))]
+    shr                                                                                         // [(scalar_v >> index), (0x01 & (scalar_u >> index))]
+    0x01                                                                                        // [0x01, (scalar_v >> index), (0x01 & (scalar_u >> index))]
+    and                                                                                         // [(0x01 & (scalar_v >> index)), (0x01 & (scalar_u >> index))]
+    0x01                                                                                        // [0x01, (0x01 & (scalar_v >> index)), (0x01 & (scalar_u >> index))]
+    shl                                                                                         // [((0x01 & (scalar_v >> index) << 0x01), (0x01 & (scalar_u >> index))]
+
+    add                                                                                         // [ret]
+}
+
+
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L207C5-L210C8
+* @dev Add two elliptic curve points in affine coordinates
+* Assumes points are on the EC
+*/
+#define macro EC_AFF_ADD() = {
+    // input stack:                     [GX, GY, QX, QY]
+
+    // check if gx and gy are both 0
+    dup2                                                                                        // [GY, GX, GY, QX, QY]
+    dup2                                                                                        // [GX, GY, GX, GY, QX, QY]
+    IS_BOTH_0()                                                                             // [0/1, GX, GY, QX, QY]
+    return_QX_QY                                                                                // [return_QX_QY, 0/1, GX, GY, QX, QY]
+    jumpi                                                                                       // [GX, GY, QX, QY]
+
+    // check if qx and qy are both 0
+    dup4                                                                                        // [QY, GX, GY, QX, QY]
+    dup4                                                                                        // [QX, QY, GX, GY, QX, QY]
+    IS_BOTH_0()                                                                             // [0/1, GX, GY, QX, QY]
+    return_GX_GY                                                                                // [return_GX_GY, 0/1, GX, GY, QX, QY]
+    jumpi                                                                                       // [GX, GY, QX, QY]
+
+
+    // calc ec zz dadd affine
+    0x01 0x01                                                                                   // [zz1, zzz1, GX, GY, QX, QY]
+    swap4                                                                                       // [QX, zzz1, GX, GY, zz1, QY]
+    swap1                                                                                       // [zzz1, QX, GX, GY, zz1, QY]
+    swap5                                                                                       // [QY, QX, GX, GY, zz1, zzz1]
+    swap3                                                                                       // [GY, QX, GX, QY, zz1, zzz1]
+    swap1                                                                                       // [QX, GY, GX, QY, zz1, zzz1]
+    swap2                                                                                       // [GX, GY, QX, QY, zz1, zzz1]
+    EC_ZZ_DADD_AFFINE()                                                                         // [x1, y1, zz1, zzz1]
+    
+
+    //
+    EC_ZZ_SET_AFF()                                                                             // [HX, HY]
+    return_value                                                                                // [return_value, HX, HY]
+    jump                                                                                        // [HX, HY]
+
+
+
+    return_QX_QY:                                                                               // [GX, GY, QX, QY]
+        pop
+        pop
+        return_value
+        jump
+
+    return_GX_GY:                                                                               // [GX, GY, QX, QY]
+        swap2                                                                                   // [QX, GY, GX, QY]
+        pop                                                                                     // [GY, GX, QY]
+        swap2                                                                                   // [QY, GX, GY]
+        pop                                                                                     // [GX, GY]
+
+
+    return_value:
+}
+
+
+
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L258
+* @dev Add a ZZ point to an affine point and return as ZZ rep
+* Uses madd-2008-s and mdbl-2008-s internally
+* https://hyperelliptic.org/EFD/g1p/auto-shortw-xyzz-3.html#addition-madd-2008-s
+* Matches https://github.com/supranational/blst/blob/9c87d4a09d6648e933c818118a4418349804ce7f/src/ec_ops.h#L705 closely
+* Handles points at infinity gracefully
+*/
+#define macro EC_ZZ_DADD_AFFINE() = {
+    // input stack:                     [x1, y1, x2, y2, zz1, zzz1]
+    
+
+    // check if x2 and y2 are affine points at infinity
+    dup4                                                                                        // [y2, x1, y1, x2, y2, zz1, zzz1]
+    dup4                                                                                        // [x2, y2, x1, y1, x2, y2, zz1, zzz1]
+    IS_BOTH_0()                                                                                 // [0/1, x1, y1, x2, y2, zz1, zzz1]
+    return_x1_y1_zz1_zzz_or_ec_zz_point_at_inf                                                  // [return_x1_y1_zz1_zzz1or_ec_zz_point_at_inf, 0/1, x1, y1, x2, y2, zz1, zzz1]
+    jumpi                                                                                       // [x1, y1, x2, y2, zz1, zzz1]
+
+
+    // check if zz and zzz are ec zz points at infinity
+    dup6                                                                                        // [zzz1, x1, y1, x2, y2, zz1, zzz1]
+    dup6                                                                                        // [zz1, zzz1, x1, y1, x2, y2, zz1, zzz1]
+    IS_BOTH_0()                                                                                 // [0/1, x1, y1, x2, y2, zz1, zzz1]
+    return_x2_y2_1_1                                                                            // [return_x2_y2_1_1, 0/1, x1, y1, x2, y2, zz1, zzz1]
+    jumpi                                                                                       // [x1, y1, x2, y2, zz1, zzz1]
+
+
+    // since zz1 and zzz1 will always be 1 and 1 respectively within this contract, no need to check if they're zz points at infinity
+    // note: no stack var represents zz1 and zzz1 since its just used twice within the function and would only be an extra 4 bytes to push them to the stack rather than the stack arrangements that might happen further down
+
+
+    // calculate R = S2 - y1 = y2*zzz1 - y1
+    // calc y2*zzz1
+    dup4                                                                                        // [y2, x1, y1, x2, y2, zz1, zzz1]
+    dup7                                                                                        // [zzz1, y2, x1, y1, x2, y2, zz1, zzz1]
+    MULMOD_P()                                                                                  // [y2*zzz1, x1, y1, x2, y2, zz1, zzz1]
+    // calc -y1
+    dup3                                                                                        // [y1, y2*zzz1, x1, y1, x2, y2, zz1, zzz1]
+    [P]                                                                                         // [P, y1, y2*zzz1, x1, y1, x2, y2, zz1, zzz1]
+    sub                                                                                         // [-y1, y2*zzz1, x1, y1, x2, y2, zz1, zzz1]
+    ADDMOD_P()                                                                                  // [R, x1, y1, x2, y2, zz1, zzz1]
+
+
+    // calculate P = U2 - x1 = x2*zz1 - x1
+    // calc x2*zz1
+    dup4                                                                                        // [x2, R, x1, y1, x2, y2, zz1, zzz1]
+    dup7                                                                                        // [zz1, x2, R, x1, y1, x2, y2, zz1, zzz1]
+    MULMOD_P()                                                                                  // [x2*zz1, R, x1, y1, x2, y2, zz1, zzz1]
+    // calc -x1
+    dup3                                                                                        // [x1, x2*zz1, R, x1, y1, x2, y2, zz1, zzz1]
+    [P]                                                                                         // [P, x1, x2*zz1, R, x1, y1, x2, y2, zz1, zzz1]
+    sub                                                                                         // [-x1, x2*zz1, R, x1, y1, x2, y2, zz1, zzz1]
+    ADDMOD_P()                                                                                  // [P, R, x1, y1, x2, y2, zz1, zzz1] // P here is comp_P not prime field
+
+
+    // if P != 0 jump to P_not_0
+    dup1                                                                                        // [P, P, R, x1, y1, x2, y2, zz1, zzz1]
+    P_not_0                                                                                     // [P_not_0, P, P, R, x1, y1, x2, y2, zz1, zzz1]
+    jumpi                                                                                       // [P, R, x1, y1, x2, y2, zz1, zzz1]
+
+
+    // if R == 0 jump to R_is_0
+    dup2                                                                                        // [R, P, R, x1, y1, x2, y2, zz1, zzz1]
+    iszero                                                                                      // [iszero(R), P, R, x1, y1, x2, y2, zz1, zzz1]
+    R_is_0                                                                                      // [R_is_0, iszero(R), P, R, x1, y1, x2, y2, zz1, zzz1]
+    jumpi                                                                                       // [P, R, x1, y1, x2, y2, zz1, zzz1]
+
+
+
+    // else return ec zz point at infinity
+    pop pop pop pop pop pop pop pop                                                             // []
+    EC_ZZ_POINT_AT_INF()                                                                        // [x3, y3, zz3, zzz3]
+    return_value                                                                                // [return_value, x3, y3, zz3, zzz3]
+    jump                                                                                        // [x3, y3, zz3, zzz3]
+
+
+
+    P_not_0:                                                                                    // [P, R, x1, y1, x2, y2, zz1, zzz1]
+        // calc PP = P * P
+        dup1                                                                                    // [P, P, R, x1, y1, x2, y2, zz1, zzz1]
+        dup1                                                                                    // [P, P, P, R, x1, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [PP, P, R, x1, y1, x2, y2, zz1, zzz1]
+
+        // calc PPP = PP * P
+        dup1                                                                                    // [PP, PP, P, R, x1, y1, x2, y2, zz1, zzz1]
+        swap2                                                                                   // [P, PP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+
+
+        // calc zz3 = zz1 * PP
+        dup8                                                                                    // [zz1, PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+        dup3                                                                                    // [PP, zz1, PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [zz3, PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+
+
+        // calc zzz3 = zzz1 * PPP
+        dup10                                                                                   // [zzz1, zz3, PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+        dup3                                                                                    // [PPP, zzz1, zz3, PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [zzz3, zz3, PPP, PP, R, x1, y1, x2, y2, zz1, zzz1]
+
+
+
+        // calc Q = x1 * pp
+        swap3                                                                                   // [PP, zz3, PPP, zzz3, R, x1, y1, x2, y2, zz1, zzz1]
+        swap1                                                                                   // [zz3, PP, PPP, zzz3, R, x1, y1, x2, y2, zz1, zzz1]
+        swap5                                                                                   // [x1, PP, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+
+
+
+        // calc x3 = R^2 - PPP - 2*Q
+        
+        // calc R^2 - PPP
+        dup4                                                                                    // [R, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        dup1                                                                                    // [R, R, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [R^2, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        dup3                                                                                    // [PPP, R^2, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        [P]                                                                                     // [Prime, PPP, R^2, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        sub                                                                                     // [-PPP, R^2, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        ADDMOD_P()                                                                              // [(R^2 - PPP), Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+
+        // calc -2*Q
+        [MINUS_2_MOD_P]                                                                         // [MINUS_2_MOD_P, (R^2 - PPP), Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        dup3                                                                                    // [Q, MINUS_2_MOD_P, (R^2 - PPP), Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [(-2*Q), (R^2 - PPP), Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+
+        ADDMOD_P()                                                                              // [x3, Q, PPP, zzz3, R, zz3, y1, x2, y2, zz1, zzz1]
+
+
+
+        // calc y3 = R*(Q-x3) - y1*PPP
+
+        // calc (Q+(-x3))*R
+        swap4                                                                                   // [R, Q, PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+        swap1                                                                                   // [Q, R, PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+        dup5                                                                                    // [x3, Q, R, PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+        [P]                                                                                     // [Prime, x3, Q, R, PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+        sub                                                                                     // [-x3, Q, R, PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+        ADDMOD_P()                                                                              // [(Q+(-x3)), R, PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [(R*(Q-x3)), PPP, zzz3, x3, zz3, y1, x2, y2, zz1, zzz1]
+
+        // calc (-y1)*PPP
+        swap5                                                                                   // [y1, PPP, zzz3, x3, zz3, (R*(Q-x3)), x2, y2, zz1, zzz1]
+        [P]                                                                                     // [Prime, y1, PPP, zzz3, x3, zz3, (R*(Q-x3)), x2, y2, zz1, zzz1]
+        sub                                                                                     // [-y1, PPP, zzz3, x3, zz3, (R*(Q-x3)), x2, y2, zz1, zzz1]
+        MULMOD_P()                                                                              // [(-y1)*PPP, zzz3, x3, zz3, (R*(Q-x3)), x2, y2, zz1, zzz1]
+
+        
+
+        // calc y3
+        swap1                                                                                   // [zzz3, (-y1)*PPP, x3, zz3, (R*(Q-x3)), x2, y2, zz1, zzz1]
+        swap4                                                                                   // [(R*(Q-x3)), (-y1)*PPP, x3, zz3, zzz3, x2, y2, zz1, zzz1]
+        ADDMOD_P()                                                                              // [y3, x3, zz3, zzz3, x2, y2, zz1, zzz1]
+        
+
+
+        // arrange stack
+        swap4                                                                                   // [x2, x3, zz3, zzz3, y3, y2, zz1, zzz1]
+        pop                                                                                     // [x3, zz3, zzz3, y3, y2, zz1, zzz1]
+        swap4                                                                                   // [y2, zz3, zzz3, y3, x3, zz1, zzz1]
+        pop                                                                                     // [zz3, zzz3, y3, x3, zz1, zzz1]
+
+        swap4                                                                                   // [zz1, zzz3, y3, x3, zz3, zzz1]
+        pop                                                                                     // [zzz3, y3, x3, zz3, zzz1]
+        swap4                                                                                   // [zzz1, y3, x3, zz3, zzz3]
+        pop                                                                                     // [y3, x3, zz3, zzz3]
+        swap1                                                                                   // [x3, y3, zz3, zzz3]
+
+        return_value                                                                            // [return_value, x3, y3, zz3, zzz3
+        jump                                                                                    // [x3, y3, zz3, zzz3]
+
+
+    R_is_0:                                                                                     // [P, R, x1, y1, x2, y2, zz1, zzz1]
+        pop pop pop pop                                                                         // [x2, y2, zz1, zzz1]
+        swap2                                                                                   // [zz1, y2, x2, zzz1]
+        pop                                                                                     // [y2, x2, zzz1]
+        swap2                                                                                   // [zzz1, x2, y2]
+        pop                                                                                     // [x2, y2]
+
+        EC_ZZ_DOUBLE_AFFINE()                                                                   // [x3, y3, zz3, zzz3]
+        return_value                                                                            // [return_value, x3, y3, zz3, zzz3]
+        jump                                                                                    // [x3, y3, zz3, zzz3]
+
+
+
+
+    return_x1_y1_zz1_zzz_or_ec_zz_point_at_inf:                                                 // [x1, y1, x2, y2, zz1, zzz1]
+        // if zz1 and zzz1 are points are ec zz point at inf return ec zz point at infinty
+        dup6                                                                                    // [zzz1, x1, y1, x2, y2, zz1, zzz1]
+        dup6                                                                                    // [zz1, zzz1, x1, y1, x2, y2, zz1, zzz1]
+        IS_BOTH_0()                                                                             // [0/1, x1, y1, x2, y2, zz1, zzz1]
+        return_ec_zz_point_at_inf                                                               // [return_ec_zz_point_at_inf, 0/1, x1, y1, x2, y2, zz1, zzz1]
+        jumpi                                                                                   // [x1, y1, x2, y2, zz1, zzz1]
+
+
+        // else return x2 y2 zz1 and zzz1
+        swap2                                                                                   // [x2, y1, x1, y2, zz1, zzz1]
+        pop                                                                                     // [y1, x1, y2, zz1, zzz1]
+        swap2                                                                                   // [y2, x1, y1, zz1, zzz1]
+        pop                                                                                     // [x1, y1, zz1, zzz1]
+        return_value                                                                            // [return_value, x1, y1, zz1, zzz1]
+        jump                                                                                    // [x3, y3, zz3, zzz3]
+
+
+
+    return_ec_zz_point_at_inf:                                                                  // [x1, y1, x2, y2, zz1, zzz1]
+        // return with ec zz point at infinity
+        pop pop pop pop pop pop                                                                 // []
+        EC_ZZ_POINT_AT_INF()                                                                    // [x3, y3, zz3, zzz3]
+        return_value                                                                            // [return_value, x1, y1, zz1, zzz1]
+        jump                                                                                    // [x3, y3, zz3, zzz3]
+    
+
+    return_x2_y2_1_1:                                                                           // [x1, y1, x2, y2, zz1, zzz1]
+        // return with ec zz point at infinity
+        pop pop                                                                                 // [x2, y2, zz1, zzz1]
+        0x01 0x01                                                                               // [1, 1, x2, y2, zz1, zzz1]
+        swap4 pop                                                                               // [1, x2, y2, 1, zzz1]
+        swap4 pop                                                                               // [x2, y2, 1, 1] i.e [x3, y3, zz3, zzz3]
+            
+
+    return_value:                                                                               // [x3, y3, zz3, zzz3]
+}
+
+
+
+
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L353C5-L357C8
+* @dev Convert from ZZ rep to affine rep
+* Assumes (zz)^(3/2) == zzz (i.e. zz == z^2 and zzz == z^3)
+* See https://hyperelliptic.org/EFD/g1p/auto-shortw-xyzz-3.html
+*/
+#define macro EC_ZZ_SET_AFF() = {
+    // input stack:                     [x, y, zz, zzz]
+
+    dup4                                                                                        // [zzz, x, y, zz, zzz]
+    dup4                                                                                        // [zz, zzz, x, y, zz, zzz]
+    IS_BOTH_0()                                                                             // [0/1, x, y, zz, zzz]
+    return_ec_affine_point_at_inf                                                               // [return_ec_affine_point_at_inf, 0/1, x, y, zz, zzz]
+    jumpi                                                                                       // [x, y, zz, zzz]
+
+
+
+    // get zzzInv
+    swap3                                                                                       // [zzz, y, zz, x]
+    P_MOD_INV()                                                                                 // [zzzInv, y, zz, x]
+
+    // get zInv by multiplying zz by zzzInv
+    swap2                                                                                       // [zz, y, zzzInv, x]
+    dup3                                                                                        // [zzzInv, zz, y, zzzInv, x]
+    MULMOD_P()                                                                                  // [zInv, y, zzzInv, x]
+
+    // get zzInv by squaring zInv
+    dup1                                                                                        // [zInv, zInv, y, zzzInv, x]
+    MULMOD_P()                                                                                  // [zzInv, y, zzzInv, x]
+
+
+    // get y = mulmod(y, zzzInv, p)
+    swap2                                                                                       // [zzzInv, y, zzInv, x]
+    MULMOD_P()                                                                                  // [y1, zzInv, x]
+
+    // get x1 = mulmod(x, zzInv, p)
+    swap2                                                                                       // [x, zzInv, y1]
+    MULMOD_P()                                                                                  // [x1, y1]
+
+    return_value                                                                                // [return_value, x1, y1]
+    jump                                                                                        // [x1, y1]
+
+
+    return_ec_affine_point_at_inf:
+        EC_AFFINE_POINT_AT_INF()
+
+    return_value:
+}
+
+
+
+
+
+#define macro EC_ZZ_DOUBLE_ZZ() = {
+    // input stack:                         [x1, y1, zz1, zzz1]
+
+    dup4                                                                                        // [zzz, x1, y1, zz1, zzz1]
+    dup4                                                                                        // [zz1, zzz1, x1, y1, zz1, zzz1]
+    IS_BOTH_0()                                                                                 // [0/1, x1, y1, zz1, zzz1]
+    return_ec_affine_point_at_inf                                                               // [return_ec_affine_point_at_inf, 0/1, x1, y1, zz1, zzz1]
+    jumpi                                                                                       // [x1, y1, zz1, zzz1]
+
+
+
+    // calc v, w and s
+    dup2                                                                                        // [y1, x1, y1, zz1, zzz1]
+    dup2                                                                                        // [x1, y1, x1, y1, zz1, zzz1]
+    COMPUTE_V_W_AND_S()                                                                         // [S, W, V, x1, y1, zz1, zzz1]
+
+
+    // calc M = 3*(X1)^2 + a*(zz1)^2
+
+    // calc Left = 3*(X1)^2
+    swap3                                                                                       // [x1, W, V, S, y1, zz1, zzz1]
+    dup1                                                                                        // [x1, x1, W, V, S, y1, zz1, zzz1]
+    MULMOD_P()                                                                                  // [x1^2, W, V, S, y1, zz1, zzz1]
+    0x03                                                                                        // [3, x1^2, W, V, S, y1, zz1, zzz1]
+    MULMOD_P()                                                                                  // [(3*(X1)^2), W, V, S, y1, zz1, zzz1]
+
+    // calc Right = a*(zz1)^2
+    dup6                                                                                        // [zz1, (3*(X1)^2), W, V, S, y1, zz1, zzz1]
+    dup1                                                                                        // [zz1, zz1, (3*(X1)^2), W, V, S, y1, zz1, zzz1]
+    MULMOD_P()                                                                                  // [zz1^2, (3*(X1)^2), W, V, S, y1, zz1, zzz1]
+    [A]                                                                                         // [A, zz1^2, (3*(X1)^2), W, V, S, y1, zz1, zzz1]
+    MULMOD_P()                                                                                  // [(a*(zz1)^2), (3*(X1)^2), W, V, S, y1, zz1, zzz1]
+
+    // calc M
+    ADDMOD_P()                                                                                  // [M, W, V, S, y1, zz1, zzz1]
+
+
+
+    // calc x3 and y3 and have them on the stack
+    COMPUTE_X3_AND_Y3()                                                                         // [y3, V, W, x3, zz1, zzz1]
+
+
+
+
+    // calc zz3 = V * ZZ1
+    swap4                                                                                       // [zz1, V, W, x3, y3, zzz1]
+    MULMOD_P()                                                                                  // [zz3, W, x3, y3, zzz1]
+
+
+    // calc zzz3 = W * ZZZ1
+    swap4                                                                                       // [zzz1, W, x3, y3, zz3]
+    MULMOD_P()                                                                                  // [zzz3, x3, y3, zz3]
+
+
+
+    // fix stack yet again
+    swap3                                                                                       // [zz3, x3, y3, zzz3]
+    swap2                                                                                       // [y3, x3, zz3, zzz3]
+    swap1                                                                                       // [x3, y3, zz3, zzz2]
+
+    return_value                                                                                // [return_value, x3, y3, zz3, zzz2]
+    jump                                                                                        // [x3, y3, zz3, zzz2]
+
+
+    return_ec_affine_point_at_inf:                                                              // []
+        pop pop pop pop
+        EC_AFFINE_POINT_AT_INF()
+
+    return_value:
+}
+
+
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L334C1-L334C1
+* @dev Double an affine point and return as a ZZ point 
+* Uses http://hyperelliptic.org/EFD/g1p/auto-shortw-xyzz.html#doubling-mdbl-2008-s-1
+* Handles point at infinity gracefully
+*/
+#define macro EC_ZZ_DOUBLE_AFFINE() = {
+    // input stack:                         [x1, y1]
+
+    dup2                                                                                        // [y1, x1, y1]
+    dup2                                                                                        // [x1, y1, x1, y1]
+    IS_BOTH_0()                                                                                 // [0/1, x1, y1]
+    return_ec_affine_point_at_inf                                                               // [return_ec_affine_point_at_inf, 0/1, x1, y1]
+    jumpi                                                                                       // [x1, y1]
+
+
+
+    // calc v, w and s
+    dup2                                                                                        // [y1, x1, y1]
+    dup2                                                                                        // [x1, y1, x1, y1]
+    COMPUTE_V_W_AND_S()                                                                         // [S, W, V, x1, y1]
+
+
+    // calc M = 3*(X1)^2 + a*(zz1)^2
+
+    // calc Left = 3*(X1)^2
+    swap3                                                                                       // [x1, W, V, S, y1]
+    dup1                                                                                        // [x1, x1, W, V, S, y1]
+    MULMOD_P()                                                                                  // [x1^2, W, V, S, y1]
+    0x03                                                                                        // [3, x1^2, W, V, S, y1]
+    MULMOD_P()                                                                                  // [(3*(X1)^2), W, V, S, y1]
+
+    // calc Right = a*(zz1)^2
+    dup6                                                                                        // [zz1, (3*(X1)^2), W, V, S, y1]
+    dup1                                                                                        // [zz1, zz1, (3*(X1)^2), W, V, S, y1]
+    MULMOD_P()                                                                                  // [zz1^2, (3*(X1)^2), W, V, S, y1]
+    [A]                                                                                         // [A, zz1^2, (3*(X1)^2), W, V, S, y1]
+    MULMOD_P()                                                                                  // [(a*(zz1)^2), (3*(X1)^2), W, V, S, y1]
+
+    // calc M
+    ADDMOD_P()                                                                                  // [M, W, V, S, y1]
+
+
+
+    // calc x3 and y3 and have them on the stack
+    COMPUTE_X3_AND_Y3()                                                                         // [y3, zz3, zzz3, x3] V == zz3 and W == zzz3
+
+
+
+    // fix stack
+    swap1                                                                                       // [zz3, y3, zzz3, x3]
+    swap2                                                                                       // [zzz3, y3, zz3, x3]
+    swap3                                                                                       // [x3, y3, zz3, zzz3]
+
+
+    return_value                                                                                // [return_value, x3, y3, zz3, zzz2]
+    jump                                                                                        // [x3, y3, zz3, zzz2]
+
+
+    return_ec_affine_point_at_inf:
+        pop pop pop pop
+        EC_AFFINE_POINT_AT_INF()
+
+    return_value:
+}
+
+
+///@dev computes the `comp_U`, `comp_V`, `comp_W`, and `comp_S` intermediate variables of x1 and x2 coordinated given to it
+#define macro COMPUTE_V_W_AND_S() = {
+    // input stack:                         [x1, y1]
+
+    // calc U
+    swap1                                                                                       // [y1, x1]
+    0x02                                                                                        // [0x02, y1, x1]
+    MULMOD_P()                                                                                  // [U, x1]
+
+    // calc V
+    dup1                                                                                        // [U, U, x1]    
+    dup1                                                                                        // [U, U, U, x1]    
+    MULMOD_P()                                                                                  // [V, U, x1]
+
+    // calc W
+    dup1                                                                                        // [V, V, U, x1]
+    swap2                                                                                       // [U, V, V, x1]
+    MULMOD_P()                                                                                  // [W, V, x1]
+
+    // calc S
+    dup3                                                                                        // [x1, W, V, x1]
+    dup3                                                                                        // [V, x1, W, V, x1]
+    MULMOD_P()                                                                                  // [S, W, V, x1]
+    
+    // arrange stack
+    swap3                                                                                       // [x1, W, V, S]
+    pop                                                                                         // [W, V, S]
+
+    swap1                                                                                       // [V, W, S]
+    swap2                                                                                       // [S, W, V]
+}
+
+
+///@dev computes X3 and Y3 coordinated from `comp_M`, `comp_W`, `comp_V`, `comp_S`, `y1` given to it
+#define macro COMPUTE_X3_AND_Y3() = {
+    // input stack:                         [M, W, V, S, y1]
+
+
+    // calc x3 = M^2 + (-2)*S
+    dup1                                                                                        // [M, M, W, V, S, y1]
+    dup1                                                                                        // [M, M, M, W, V, S, y1]
+    MULMOD_P()                                                                                  // [M^2, M, W, V, S, y1]
+
+    [MINUS_2_MOD_P]                                                                             // [MINUS_2_MOD_P, M^2, M, W, V, S, y1]
+    dup6                                                                                        // [S, MINUS_2_MOD_P, M^2, M, W, V, S, y1]
+    MULMOD_P()                                                                                  // [(-2)*S, M^2, M, W, V, S, y1]
+
+    ADDMOD_P()                                                                                  // [x3, M, W, V, S, y1]
+
+
+
+    // calc y3 = M*(S+(-X3)) + (-W)*Y1
+
+    // calc M*(S+(-X3))
+    swap4                                                                                       // [S, M, W, V, x3, y1]
+    dup5                                                                                        // [x3, S, M, W, V, x3, y1]
+    [P]                                                                                         // [P, x3, S, M, W, V, x3, y1]
+    sub                                                                                         // [-x3, S, M, W, V, x3, y1]
+    ADDMOD_P()                                                                                  // [S+(-X3), M, W, V, x3, y1]
+    MULMOD_P()                                                                                  // [(M*(S+(-X3))), W, V, x3, y1]
+
+    // calc (-W)*Y1
+    swap4                                                                                       // [y1, W, V, x3, (M*(S+(-X3)))]
+    dup2                                                                                        // [W, y1, W, V, x3, (M*(S+(-X3)))]
+    [P]                                                                                         // [P, W, y1, W, V, x3, (M*(S+(-X3)))]
+    sub                                                                                         // [-W, y1, W, V, x3, (M*(S+(-X3)))]
+    MULMOD_P()                                                                                  // [((-W)*Y1), W, V, x3, (M*(S+(-X3)))]
+
+    // fix stack
+    swap1                                                                                       // [W, ((-W)*Y1), V, x3, (M*(S+(-X3)))]
+    swap3                                                                                       // [x3, ((-W)*Y1), V, W, (M*(S+(-X3)))]
+    swap4                                                                                       // [(M*(S+(-X3))), ((-W)*Y1), V, W, x3]
+
+    // calc y3
+    ADDMOD_P()                                                                                  // [y3, V, W, x3]
+}

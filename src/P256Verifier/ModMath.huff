@@ -1,0 +1,78 @@
+
+
+///@dev addmod opcode modulo Secp256r1.P
+#define macro ADDMOD_P() = {
+    // input stack:                         [a, b]
+    [P]                                                                                         // [P, a, b]
+    swap2                                                                                       // [b, a, P]
+    addmod                                                                                      // [result]
+}
+
+///@dev mulmod opcode modulo Secp256r1.N
+#define macro MULMOD_N() = {
+    // input stack:                         [a, b]
+    [N]                                                                                         // [N, a, b]
+    swap2                                                                                       // [b, a, N]
+    mulmod                                                                                      // [result]
+}
+
+///@dev mulmod opcode modulo Secp256r1.P
+#define macro MULMOD_P() = {
+    // input stack:                         [a, b]
+    [P]                                                                                         // [P, a, b]
+    swap2                                                                                       // [b, a, P]
+    mulmod                                                                                      // [result]
+}
+
+
+///@dev integer inverse modulo N 
+#define macro N_MOD_INV() = {
+    // input stack:                         [u]
+    [MINUS_2_MOD_N]                                                                             // [minus__2_mod_n, u]
+    [N]                                                                                         // [N, minus__2_mod_n, u]
+    MOD_INV()                                                                                   // [inv]
+}
+
+
+///@dev integer inverse modulo P
+#define macro P_MOD_INV() = {
+    // input stack:                         [u]
+    [MINUS_2_MOD_P]                                                                             // [minus__2_mod_p, u]
+    [P]                                                                                         // [P, minus__2_mod_p, u]
+    MOD_INV()                                                                                   // [inv]
+}
+
+
+/**
+* from: https://github.com/daimo-eth/p256-verifier/blob/4287b1714c2457514c97f47f55ff830d310a60cb/src/P256Verifier.sol#L408
+* @dev u^-1 mod f = u^(phi(f) - 1) mod f = u^(f-2) mod f for prime f
+* by Fermat's little theorem, compute u^(f-2) mod f using modexp precompile
+* Assume f != 0. If u is 0, then u^-1 mod f is undefined mathematically, 
+* but this function returns 0.
+*/
+#define macro MOD_INV() = {
+    // input stack:                         [f, minus_2_mod_f, u]
+    // invariant(f != 0);
+    // invariant(f prime);
+
+    0x20 0x40 mstore                                                                            // [f, minus_2_mod_f, u]
+    0x20 0x60 mstore                                                                            // [f, minus_2_mod_f, u]
+    0x20 0x80 mstore                                                                            // [f, minus_2_mod_f, u]
+    0xe0 mstore                                                                                 // [minus_2_mod_f, u]
+    0xc0 mstore                                                                                 // [u]
+    0xa0 mstore                                                                                 // []
+
+    0x20                                                                                        // [retSize]
+    0x40                                                                                        // [retOffset, retSize]
+    0xc0                                                                                        // [inSize, retOffset, retSize]
+    0x40                                                                                        // [inOffset, inSize, retOffset, retSize]
+    0x05                                                                                        // [address(0x05), inOffset, inSize, retOffset, retSize]
+    gas                                                                                         // [gas, address(0x05), inOffset, inSize, retOffset, retSize]
+    staticcall                                                                                  // [0 or 1]
+
+    // TODO: revert if precompile call reverts, though `precompile should never fail on regular EVM environments`
+    pop                                                                                         // []
+    
+    0x40                                                                                        // [0x40]
+    mload                                                                                       // [inverse]
+}

@@ -1,66 +1,16 @@
-## Foundry
+## P256 Curve Verifier Huff implementation
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Secp256r1 (a.k.a p256) curve signature verifier rewritten and optimized in [Huff Language](https://huff.sh). This was greatly inspired by [dcposch's](https://github.com/dcposch) and [nalinbhardwaj's](https://github.com/nalinbhardwaj) implementation [here](https://github.com/daimo-eth/p256-verifier/blob/master/src/P256Verifier.sol) and [pcaversaccio's](https://github.com/pcaversaccio) Vyper implementation [here](https://github.com/pcaversaccio/p256-verifier-vyper/blob/main/src/P256Verifier.vy). Also, for more technical details, please refer to [EIP-7212](https://eips.ethereum.org/EIPS/eip-7212).
 
-Foundry consists of:
+    This is experimental software and is provided on an "as is" and "as available" basis. We do not give any warranties and will not be liable for any losses incurred through any use of this code base.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+### Benchmark
 
-## Documentation
+- [Solidity p256 Verifier](https://github.com/daimo-eth/p256-verifier/blob/master/src/P256Verifier.sol): 330,000 gas
+- [Huff p256 Verifier](https://github.com/AmadiMichael/p256-verifier-huff/blob/master/src/P256Verifier/Verifier.sol): 240,000 gas
 
-https://book.getfoundry.sh/
+### Further References
 
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- Daimo's GitHub Repository: [daimo-eth/p256-verifier](https://github.com/daimo-eth/p256-verifier)
+- Daimo's Blog: [blog/p256verifier](https://daimo.xyz/blog/p256verifier)
+- Daimo's Website: [p256.eth.limo](https://p256.eth.limo/)
