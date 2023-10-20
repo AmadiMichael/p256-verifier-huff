@@ -44,7 +44,7 @@
         pop                                                                                     // [index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
         dup1                                                                                    // [index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
         dup10                                                                                   // [scalar_v, index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
-        dup11                                                                                   // [scalar_u, scalar_v, index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
+        dup10                                                                                   // [scalar_u, scalar_v, index, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
         COMPUTE_BITPAIR()                                                                       // [bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
 
         // decrement index by 1
@@ -185,7 +185,7 @@
             swap2                                                                               // [X, Y, TX, TY, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
             EC_ZZ_DADD_AFFINE()                                                                 // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
 
-        check_iteration_condition:
+        check_iteration_condition:                                                              // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
             // continue loop if index is 0 and above
             0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff                  // [-1, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
             dup7                                                                                // [index, -1, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
@@ -201,9 +201,10 @@
 
         // get final X
         MULMOD_P()                                                                              // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
-        return_value                                                                            // [return_value, X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v]
-        jump                                                                                    // [X, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, scalar_v] // we can revert with this stack state because the calling macro only uses the top of the stack
-
+        swap13                                                                                  // [scalar_v, Y, zz, zzz, bitpair, index, HX, HY, GX, GY, QX, QY, scalar_u, X]
+        pop pop pop pop pop pop pop pop pop pop pop pop pop                                     // [X]
+        return_value                                                                            // [return_value, X]
+        jump                                                                                    // [X] 
         
 
     return_zero:                                                                                // [scalar_u, scalar_v]
@@ -656,9 +657,9 @@
     jump                                                                                        // [x3, y3, zz3, zzz2]
 
 
-    return_ec_affine_point_at_inf:                                                              // []
-        pop pop pop pop
-        EC_AFFINE_POINT_AT_INF()
+    return_ec_affine_point_at_inf:                                                              // [x1, y1, zz1, zzz1]
+        pop pop pop pop                                                                         // []
+        EC_ZZ_POINT_AT_INF()
 
     return_value:
 }

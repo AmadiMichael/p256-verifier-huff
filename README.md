@@ -4,10 +4,36 @@ Secp256r1 (a.k.a p256) curve signature verifier rewritten and optimized in [Huff
 
     This is experimental software and is provided on an "as is" and "as available" basis. We do not give any warranties and will not be liable for any losses incurred through any use of this code base.
 
-### Benchmark
+## Gas Benchmark
 
-- [Solidity p256 Verifier](https://github.com/daimo-eth/p256-verifier/blob/master/src/P256Verifier.sol): 330,000 gas
-- [Huff p256 Verifier](https://github.com/AmadiMichael/p256-verifier-huff/blob/main/src/P256HuffVerifier/Verifier.huff): 240,000 gas
+| Implementation               | Min gas | Avg gas | Max gas |
+| ---------------------------- | ------- | ------- | ------- |
+| Huff P256 Verifier           | 228,475 | 239,164 | 249,574 |
+| Daimo Solidity P256 Verifier | 319,943 | 333,892 | 347,505 |
+| FCL Solidity P256 Verifier   | 362,028 | 378,868 | 394,931 |
+
+## Actions
+
+To regenerate test vectors:
+
+```
+cd test-vectors
+npm i
+
+# Download, extract, clean test vectors
+# This regenerates ../test/vectors.jsonl
+npm run generate_wycheproof
+
+# Validate that all vectors produce expected results with SubtleCrypto and noble library implementation
+npm test
+
+# Validate that all vectors also work with EIP-7212
+# Test the fallback contract...
+cd ..
+forge test -vvv
+
+# In future, execution spec and clients can test against the same clean vectors
+```
 
 ### Further References
 

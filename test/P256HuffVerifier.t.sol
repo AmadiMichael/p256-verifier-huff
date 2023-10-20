@@ -60,32 +60,32 @@ contract P256VerifierTest is Test {
         assertEq(res, false);
     }
 
-    // // This is the most comprehensive test, covering many edge cases. See vector
-    // // generation and validation in the test-vectors directory.
-    // function testWycheproof() public {
-    //     string memory file = "./test-vectors/vectors_wycheproof.jsonl";
-    //     while (true) {
-    //         string memory vector = vm.readLine(file);
-    //         if (bytes(vector).length == 0) {
-    //             break;
-    //         }
+    // This is the most comprehensive test, covering many edge cases. See vector
+    // generation and validation in the test-vectors directory.
+    function testWycheproof() public {
+        string memory file = "./test-vectors/vectors_wycheproof.jsonl";
+        while (true) {
+            string memory vector = vm.readLine(file);
+            if (bytes(vector).length == 0) {
+                break;
+            }
 
-    //         uint256 x = uint256(vector.readBytes32(".x"));
-    //         uint256 y = uint256(vector.readBytes32(".y"));
-    //         uint256 r = uint256(vector.readBytes32(".r"));
-    //         uint256 s = uint256(vector.readBytes32(".s"));
-    //         bytes32 hash = vector.readBytes32(".hash");
-    //         bool expected = vector.readBool(".valid");
-    //         string memory comment = vector.readString(".comment");
+            uint256 x = uint256(vector.readBytes32(".x"));
+            uint256 y = uint256(vector.readBytes32(".y"));
+            uint256 r = uint256(vector.readBytes32(".r"));
+            uint256 s = uint256(vector.readBytes32(".s"));
+            bytes32 hash = vector.readBytes32(".hash");
+            bool expected = vector.readBool(".valid");
+            string memory comment = vector.readString(".comment");
 
-    //         (bool result,) = evaluate(hash, r, s, x, y);
+            (bool result,) = evaluate(hash, r, s, x, y);
 
-    //         string memory err = string(
-    //             abi.encodePacked("exp ", expected ? "1" : "0", ", we return ", result ? "1" : "0", ": ", comment)
-    //         );
-    //         assertTrue(result == expected, err);
-    //     }
-    // }
+            string memory err = string(
+                abi.encodePacked("exp ", expected ? "1" : "0", ", we return ", result ? "1" : "0", ": ", comment)
+            );
+            assertTrue(result == expected, err);
+        }
+    }
 
     function testWrongInputLength() public {
         // First valid Wycheproof vector
