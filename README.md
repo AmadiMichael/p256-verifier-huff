@@ -7,7 +7,7 @@ Secp256r1 (a.k.a p256) curve signature verifier rewritten and optimized in [Huff
 ## Gas Benchmark
 
 | Implementation               | Min gas | Avg gas | Max gas | OnChain Address                          | Available Networks                                     |
-| ---------------------------- | ------- | ------- | ------- |---------------- -------------------------|------------------------------------------------------- |
+| ---------------------------- | ------- | ------- | ------- |------------------------------------------|------------------------------------------------------- |
 | FCL Solidity P256 Verifier   |         |  	   | 227,000 |0xE9399D1183a5cf9E14B120875A616b6E2bcB840a|Polygon(M), Sepolia, Base, OP, Linea                    |
 | Huff P256 Verifier           | 228,475 | 239,164 | 249,574 |                                          |                                                        | 
 | Daimo Solidity P256 Verifier | 319,943 | 333,892 | 347,505 |0xc2b78104907F722DABAc4C69f826a522B2754De4|Mainnet, Base(T)                                        | 
