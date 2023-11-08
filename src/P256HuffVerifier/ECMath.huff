@@ -689,7 +689,7 @@
     COMPUTE_V_W_AND_S()                                                                         // [S, W, V, x1, y1]
 
 
-    // calc M = 3*(X1)^2 + a*(zz1)^2
+    // calc M = 3*(X1)^2 + a
 
     // calc Left = 3*(X1)^2
     swap3                                                                                       // [x1, W, V, S, y1]
@@ -698,12 +698,8 @@
     0x03                                                                                        // [3, x1^2, W, V, S, y1]
     MULMOD_P()                                                                                  // [(3*(X1)^2), W, V, S, y1]
 
-    // calc Right = a*(zz1)^2
-    dup6                                                                                        // [zz1, (3*(X1)^2), W, V, S, y1]
-    dup1                                                                                        // [zz1, zz1, (3*(X1)^2), W, V, S, y1]
-    MULMOD_P()                                                                                  // [zz1^2, (3*(X1)^2), W, V, S, y1]
-    [A]                                                                                         // [A, zz1^2, (3*(X1)^2), W, V, S, y1]
-    MULMOD_P()                                                                                  // [(a*(zz1)^2), (3*(X1)^2), W, V, S, y1]
+    // calc Right = a
+    [A]                                                                                         // [A, (3*(X1)^2), W, V, S, y1]
 
     // calc M
     ADDMOD_P()                                                                                  // [M, W, V, S, y1]
