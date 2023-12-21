@@ -1,0 +1,76 @@
+
+#include "./P256HuffWrapper.huff"
+
+#define function verifySignatureAllowMalleability(bytes32 message_hash, uint256 r, uint256 s, uint256 x, uint256 y) payable returns (bool)
+#define function verifySignature(bytes32 message_hash, uint256 r, uint256 s, uint256 x, uint256 y) payable returns (bool)
+
+// #define constant VERIFIER_ADDRESS = 0x00 // will be defined at deployment with .deploy().with_code()...
+
+#define macro MAIN() = {
+    msize                                                               // [0x00]
+    calldataload                                                        // [data[0x00]]
+    0xe0                                                                // [0xe0, data[0x00]]
+    shr                                                                 // [func_sig]
+    
+    dup1                                                                // [func_sig, func_sig]
+    __FUNC_SIG(verifySignature)                                         // [verifySignature_func_sig, func_sig, func_sig]
+    eq                                                                  // [(verifySignature_func_sig == func_sig), func_sig]
+    verifySignature_jumpdest                                            // [verifySignature_jumpdest, (verifySignature_func_sig == func_sig), func_sig]
+    jumpi                                                               // [func_sig]
+    
+    __FUNC_SIG(verifySignatureAllowMalleability)                        // [verifySignatureAllowMalleability_func_sig, func_sig]
+    eq                                                                  // [(verifySignatureAllowMalleability_func_sig == func_sig)]
+    verifySignatureAllowMalleability_jumpdest                           // [verifySignatureAllowMalleability_jumpdest, (verifySignatureAllowMalleability_func_sig == func_sig)]
+    jumpi                                                               // []
+
+    // revert otherwise
+    msize                                                               // [0x00]
+    msize                                                               // [0x00, 0x00]
+    revert                                                              // []
+
+    verifySignature_jumpdest:
+        __VERIFY_SIGNATURE()
+
+    verifySignatureAllowMalleability_jumpdest:
+        __VERIFY_SIGNATURE_ALLOW_MALLEABILITY()
+}
+
+#define macro __VERIFY_SIGNATURE() = {
+    LOAD_PARAMETERS_TO_STACK()                                          // [message_hash, r, s, x, y]
+    VERIFY_SIGNATURE(msize)                                             // [bool]
+    RETURN_BOOLEAN()
+}
+
+#define macro __VERIFY_SIGNATURE_ALLOW_MALLEABILITY() = {
+    LOAD_PARAMETERS_TO_STACK()                                          // [message_hash, r, s, x, y]
+    VERIFY_SIGNATURE_ALLOW_MALLEABILITY(msize)                          // [bool]
+    RETURN_BOOLEAN()
+}
+
+#define macro LOAD_PARAMETERS_TO_STACK() = {
+    0x84                                                                // [0x84]
+    calldataload                                                        // [y]
+    0x64                                                                // [0x64, y]
+    calldataload                                                        // [x, y]
+    0x44                                                                // [0x44, x, y]
+    calldataload                                                        // [s, x, y]
+    0x24                                                                // [0x24, s, x, y]
+    calldataload                                                        // [r, s, x, y]
+    0x04                                                                // [0x04, r, s, x, y]
+    calldataload                                                        // [message_hash, r, s, x, y]
+}
+
+#define macro VERIFIER() = {
+    [VERIFIER_ADDRESS]                                                   // [VERIFIER_ADDRESS]
+}
+
+#define macro RETURN_BOOLEAN() = {
+    // input stack:                         [return_boolean]
+
+    0x00                                                                  // [0x00, return_boolean]
+    mstore                                                                // []
+
+    0x20                                                                  // [0x20]
+    0x00                                                                  // [0x00, 0x20]
+    return                                                                // Execution returns successfully
+}

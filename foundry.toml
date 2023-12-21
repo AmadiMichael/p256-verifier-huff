@@ -4,7 +4,7 @@ out = "out"
 libs = ["lib"]
 fs_permissions = [{ access = "read", path = "./"}]
 solc = "0.8.21"
-evm_version = "shanghai"
+evm_version = "paris"
 ffi = true
 optimizer = true
 optimizer_runs = 1000000

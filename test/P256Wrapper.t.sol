@@ -3,15 +3,31 @@ pragma solidity 0.8.21;
 
 import "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {P256} from "../src/P256Wrapper.sol";
 import {HuffDeployer} from "lib/foundry-huff/src/HuffDeployer.sol";
+
+interface P256 {
+    function verifySignatureAllowMalleability(bytes32 message_hash, uint256 r, uint256 s, uint256 x, uint256 y)
+        external
+        view
+        returns (bool);
+
+    function verifySignature(bytes32 message_hash, uint256 r, uint256 s, uint256 x, uint256 y)
+        external
+        view
+        returns (bool);
+}
 
 contract P256Test is Test {
     uint256[2] public pubKey;
     P256 p256;
 
     function setUp() public {
-        p256 = new P256(HuffDeployer.deploy("P256HuffVerifier/Verifier"));
+        address verifier = HuffDeployer.config().with_evm_version("paris").deploy("P256HuffVerifier/Verifier");
+        p256 = P256(
+            HuffDeployer.config().with_code(
+                string.concat("\n #define constant VERIFIER_ADDRESS = ", vm.toString(verifier))
+            ).with_evm_version("paris").deploy("P256")
+        );
 
         pubKey = [
             0x65a2fa44daad46eab0278703edb6c4dcf5e30b8a9aec09fdc71a56f52aa392e4,

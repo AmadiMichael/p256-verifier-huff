@@ -53,7 +53,7 @@ contract GasBenchmarkTest is Test {
     FCLWrapperEIP7212 public fcl_verifier;
 
     function setUp() public {
-        huff_verifier = HuffDeployer.deploy("P256HuffVerifier/Verifier");
+        huff_verifier = HuffDeployer.config().with_evm_version("paris").deploy("P256HuffVerifier/Verifier");
         fcl_verifier = new FCLWrapperEIP7212();
     }
 

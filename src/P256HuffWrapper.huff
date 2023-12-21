@@ -1,0 +1,94 @@
+/// SPDX-License-Identifier: MIT
+/// @author Amadi Michael
+/// @title Huff p256 Wrapper
+/// @notice This is a direct huff implementation of the DaimoEth Solidity p256 wrapper here (https://github.com/daimo-eth/p256-verifier/blob/master/src/P256Wrapper.sol)
+
+/// @dev Inheriting huff file must define a macro named VERIFIER() that pushes a single value to the stack
+
+#define constant P256_N_DIV_2 = 0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8
+
+#define macro VERIFY_SIGNATURE_ALLOW_MALLEABILITY(mem_to_use) = takes(5) returns(1) {
+    // input stack:                                                         // [message_hash, r, s, x, y]
+    // return stack:                                                        // [bool]
+
+    // store parameters in memory from `mem_to_use` till `mem_to_use + 0xa0`
+    <mem_to_use>                                                            // [mem_to_use, message_hash, r, s, x, y]
+    swap1                                                                   // [message_hash, mem_to_use, r, s, x, y]
+    dup2                                                                    // [mem_to_use, message_hash, mem_to_use, r, s, x, y]
+    mstore                                                                  // [mem_to_use, r, s, x, y]
+    
+    swap1                                                                   // [r, mem_to_use, s, x, y]
+    dup2                                                                    // [mem_to_use, r, mem_to_use, s, x, y]
+    0x20                                                                    // [0x20, mem_to_use, r, mem_to_use, s, x, y]
+    add                                                                     // [(0x20 + mem_to_use), r, mem_to_use, s, x, y]
+    mstore                                                                  // [mem_to_use, s, x, y]
+    
+    swap1                                                                   // [s, mem_to_use, x, y]
+    dup2                                                                    // [mem_to_use, s, mem_to_use, x, y]
+    0x40                                                                    // [0x40, mem_to_use, s, mem_to_use, x, y]
+    add                                                                     // [(0x40 + mem_to_use), s, mem_to_use, x, y]
+    mstore                                                                  // [mem_to_use, x, y]
+    
+    swap1                                                                   // [x, mem_to_use, y]
+    dup2                                                                    // [mem_to_use, x, mem_to_use, y]
+    0x60                                                                    // [0x60, mem_to_use, x, mem_to_use, y]
+    add                                                                     // [(0x60 + mem_to_use), x, mem_to_use, y]
+    mstore                                                                  // [mem_to_use, y]
+    
+    swap1                                                                   // [y, mem_to_use]
+    dup2                                                                    // [mem_to_use, y, mem_to_use]
+    0x80                                                                    // [0x80, mem_to_use, y, mem_to_use]
+    add                                                                     // [(0x80 + mem_to_use), y, mem_to_use]
+    mstore                                                                  // [mem_to_use]
+    
+
+    // make call to verifier
+    dup1                                                                    // [mem_to_use, mem_to_use]
+    0xa0                                                                    // [0xa0, mem_to_use, mem_to_use]
+    add                                                                     // [(0xa0 + mem_to_use), mem_to_use]
+    0x20                                                                    // [0x20, (0xa0 + mem_to_use), mem_to_use]
+    dup2                                                                    // [(0xa0 + mem_to_use), 0x20, (0xa0 + mem_to_use), mem_to_use]
+    0xa0                                                                    // [0xa0, (0xa0 + mem_to_use), 0x20, (0xa0 + mem_to_use), mem_to_use]
+    dup5                                                                    // [mem_to_use, 0xa0, (0xa0 + mem_to_use), 0x20, (0xa0 + mem_to_use), mem_to_use]
+    VERIFIER()                                                              // [VERIFIER, mem_to_use, 0xa0, (0xa0 + mem_to_use), 0x20, (0xa0 + mem_to_use), mem_to_use]
+    gas                                                                     // [gas, VERIFIER, mem_to_use, 0xa0, (0xa0 + mem_to_use), 0x20, (0xa0 + mem_to_use), mem_to_use]
+    staticcall                                                              // [success, (0xa0 + mem_to_use), mem_to_use]
+    
+    // VERIFIER NEVER REVERTS, IT SHOULD ALWAYS RETURN 0 instead of reverting
+    pop                                                                     // [(0xa0 + mem_to_use), mem_to_use]
+    swap1                                                                   // [mem_to_use, (0xa0 + mem_to_use)]
+    pop                                                                     // [(0xa0 + mem_to_use)]
+    
+    // only return true if verifier returns strictly 1
+    mload                                                                   // [result]
+    0x01                                                                    // [0x01, result]
+    eq                                                                      // [(0x01 == result)]
+}
+
+#define macro VERIFY_SIGNATURE(mem_to_use) = takes(5) returns(1) {
+    // input stack:                                                         // [message_hash, r, s, x, y]
+    // return stack:                                                        // [bool]
+
+    // if s > p/2, return false
+    [P256_N_DIV_2]                                                          // [P256_N_DIV_2, message_hash, r, s, x, y]
+    dup4                                                                    // [s, P256_N_DIV_2, message_hash, r, s, x, y]
+    gt                                                                      // [(s > P256_N_DIV_2), message_hash, r, s, x, y]
+    return_false                                                            // [return_false, (s > P256_N_DIV_2), message_hash, r, s, x, y]
+    jumpi                                                                   // [message_hash, r, s, x, y]
+    
+    // else return the verification result
+    VERIFY_SIGNATURE_ALLOW_MALLEABILITY(<mem_to_use>)                       // [bool]
+    return_result                                                           // [return_result, bool]
+    jump                                                                    // [bool]
+
+
+    return_false:                                                           // [message_hash, r, s, x, y]
+    pop                                                                     // [r, s, x, y]
+    pop                                                                     // [s, x, y]
+    pop                                                                     // [x, y]
+    pop                                                                     // [y]
+    pop                                                                     // []
+    msize                                                                   // [0x00]
+
+    return_result:
+}

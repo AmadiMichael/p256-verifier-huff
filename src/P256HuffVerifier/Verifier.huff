@@ -33,8 +33,7 @@
 // -2 mod n constant, used to speed up inversion
 #define constant MINUS_2_MOD_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC63254F
 
-
-///@dev macro constants
+///@dev macro constant
 #define macro EC_ZZ_POINT_AT_INF() = {
     0x00                                                                                        // [0x00]
     0x00                                                                                        // [0x00, 0x00]
@@ -42,6 +41,7 @@
     0x00                                                                                        // [0x00, 0x00, 0x00, 0x00]
 }
 
+///@dev macro constant
 #define macro EC_AFFINE_POINT_AT_INF() = {
     0x00                                                                                        // [0x00]
     0x00                                                                                        // [0x00, 0x00]
@@ -83,7 +83,7 @@
 
 
     return_false_jumpdest:
-        0x00                                                                                    // [0x00]
+        msize                                                                                   // [0x00]
         RETURN_BOOLEAN()
 }
 
@@ -116,7 +116,7 @@
  * the optimization however introduces by Daimo was calculating the scalar multiplications and then using shamir's method to add the G and PubKey when certain bits are non-zero
  */
 #define macro ECDSA_VERIFY() = {
-    // load parameters to the stack
+    // load parameters to the stack and memory
     LOAD_CALLDATA_PARAMS()                                                                      // [message_hash, r, s]
 
 
@@ -181,12 +181,6 @@
 
 ///@dev load calldata to stack
 #define macro LOAD_CALLDATA_PARAMS() = {
-    // store public key points in memory
-    0x40
-    0x60
-    0x00
-    calldatacopy                                                                                // []
-    
     // s
     0x40
     calldataload                                                                                // [s]
@@ -196,6 +190,12 @@
     calldataload                                                                                // [r, s]
 
     // message hash
-    0x00
+    msize                                                                                       // [0x00, r, s]
     calldataload                                                                                // [message_hash, r, s]
+
+    // store public key points in memory
+    0x40                                                                                        // [0x40, message_hash, r, s]
+    0x60                                                                                        // [0x60, 0x40, message_hash, r, s]
+    msize                                                                                       // [0x00, 0x60, 0x40, message_hash, r, s]
+    calldatacopy                                                                                // [message_hash, r, s]
 }

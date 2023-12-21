@@ -70,9 +70,11 @@
     gas                                                                                         // [gas, address(0x05), inOffset, inSize, retOffset, retSize]
     staticcall                                                                                  // [0 or 1]
 
-    // TODO: revert if precompile call reverts, though `precompile should never fail on regular EVM environments`
     pop                                                                                         // []
     
     0x40                                                                                        // [0x40]
     mload                                                                                       // [inverse]
+    
+    // no need to make any check here because the only failure (returndatasize == 0) case of expmod precompile is if modulo is 0 since x % 0 is undefined
+    // we know for sure that the only values we use as modulo is P and N which are not 0 so we can skip any checks
 }

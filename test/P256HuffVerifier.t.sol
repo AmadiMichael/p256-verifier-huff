@@ -11,7 +11,7 @@ contract P256VerifierTest is Test {
     address public verifier;
 
     function setUp() public {
-        verifier = HuffDeployer.deploy("P256HuffVerifier/Verifier");
+        verifier = HuffDeployer.config().with_evm_version("paris").deploy("P256HuffVerifier/Verifier");
     }
 
     /**
