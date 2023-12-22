@@ -26,7 +26,7 @@ contract P256Test is Test {
         p256 = P256(
             HuffDeployer.config().with_code(
                 string.concat("\n #define constant VERIFIER_ADDRESS = ", vm.toString(verifier))
-            ).with_evm_version("paris").deploy("P256")
+            ).with_evm_version("paris").deploy("P256SamplePoc")
         );
 
         pubKey = [
